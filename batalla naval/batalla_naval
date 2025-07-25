@@ -1,0 +1,311 @@
+import random
+import os
+import time
+
+# --- Constantes del Juego ---
+FILAS = 4
+COLUMNAS = 2
+BARCOS = 3
+
+# Estados de la celda
+AGUA = 0
+BARCO = 1
+TOCADO = 2
+FALLADO = 3
+
+# --- Funciones del Tablero ---
+
+def crear_tablero():
+    """Crea un tablero vacío."""
+    return [[AGUA for _ in range(COLUMNAS)] for _ in range(FILAS)]
+
+def mostrar_tablero(tablero, titulo, ocultar_barcos=False):
+    """Muestra el tablero con un título, opcionalmente ocultando los barcos."""
+    print(f"\n--- {titulo} ---")
+    print("  " + " ".join(str(i + 1) for i in range(COLUMNAS)))
+    for i, fila in enumerate(tablero):
+        letra = chr(ord('A') + i)
+        fila_mostrar = []
+        for celda in fila:
+            if ocultar_barcos and celda == BARCO:
+                fila_mostrar.append("~") # Representa el agua para el oponente
+            elif celda == AGUA:
+                fila_mostrar.append("~") # Agua
+            elif celda == BARCO:
+                fila_mostrar.append("B") # Barco (solo para tu propio tablero sin ocultar)
+            elif celda == TOCADO:
+                fila_mostrar.append("X") # Tocado
+            elif celda == FALLADO:
+                fila_mostrar.append("O") # Fallado
+        print(f"{letra} {' '.join(fila_mostrar)}")
+
+def coord_a_indices(coord_str):
+    """Convierte una coordenada de string (ej. 'A3') a índices [fila][columna].
+    Retorna None, None si la coordenada es inválida.
+    """
+    if not (2 <= len(coord_str) <= 3 and coord_str[0].isalpha() and coord_str[1:].isdigit()):
+        return None, None
+
+    fila_char = coord_str[0].upper()
+    col_str = coord_str[1:]
+
+    fila = ord(fila_char) - ord('A')
+    columna = int(col_str) - 1
+
+    if not (0 <= fila < FILAS and 0 <= columna < COLUMNAS):
+        return None, None
+    return fila, columna
+
+def colocar_barcos(tablero, cantidad):
+    """Coloca barcos aleatoriamente en el tablero."""
+    colocados = 0
+    while colocados < cantidad:
+        fila = random.randint(0, FILAS - 1)
+        columna = random.randint(0, COLUMNAS - 1)
+        if tablero[fila][columna] == AGUA:
+            tablero[fila][columna] = BARCO
+            colocados += 1
+
+# --- Lógica del Juego ---
+
+def disparar(tablero_objetivo, tablero_disparos, coord_str, nombre_jugador):
+    """
+    Ejecuta un disparo en el tablero objetivo y actualiza el tablero de disparos.
+    Retorna True si el disparo fue válido y procesado, False si fue inválido o repetido.
+    """
+    fila, columna = coord_a_indices(coord_str)
+
+    if fila is None or columna is None:
+        print("Coordenada inválida. Intenta de nuevo (ej. A1).")
+        return False
+
+    if tablero_disparos[fila][columna] in [TOCADO, FALLADO]:
+        print("Ya disparaste en esta posición. Intenta de nuevo.")
+        return False
+
+    if tablero_objetivo[fila][columna] == BARCO:
+        tablero_objetivo[fila][columna] = TOCADO
+        tablero_disparos[fila][columna] = TOCADO
+        print(f"¡{nombre_jugador} hizo TOCADO en {coord_str}!")
+    elif tablero_objetivo[fila][columna] == AGUA:
+        tablero_objetivo[fila][columna] = FALLADO
+        tablero_disparos[fila][columna] = FALLADO
+        print(f"{nombre_jugador} disparó al AGUA en {coord_str}.")
+    # No es necesario un 'else' para casos ya disparados aquí, ya que el chequeo inicial lo maneja.
+    return True
+
+def quedan_barcos(tablero):
+    """Comprueba si quedan barcos sin tocar en el tablero."""
+    for fila in tablero:
+        if BARCO in fila:
+            return True
+    return False
+
+def guardar_puntuacion(nombre):
+    """Guarda el nombre del ganador en un archivo."""
+    with open("puntuaciones.txt", "a") as archivo:
+        archivo.write(f"{nombre} ganó la partida.\n")
+
+def limpiar_pantalla():
+    """Limpia la consola."""
+    os.system('cls' if os.name == 'nt' else 'clear')
+
+# --- Modos de Juego ---
+
+def jugar_vs_cpu():
+    """Modo de juego contra la CPU."""
+    nombre_jugador = input("Ingresa tu nombre: ")
+    nombre_cpu = "CPU"
+
+    tablero_jugador = crear_tablero()
+    tablero_cpu = crear_tablero()
+    disparos_jugador = crear_tablero() # Lo que el jugador ve de los disparos a la CPU
+    disparos_cpu = crear_tablero()     # Lo que la CPU ve de sus disparos al jugador
+
+    colocar_barcos(tablero_jugador, BARCOS)
+    colocar_barcos(tablero_cpu, BARCOS)
+
+    turno = 1
+    while True: # Bucle principal del juego, se rompe con victoria o empate
+        limpiar_pantalla()
+        print(f"\n--- Turno {turno} - {nombre_jugador} ---")
+        mostrar_tablero(tablero_jugador, "Tu Tablero (Tus Barcos)", ocultar_barcos=False)
+        mostrar_tablero(disparos_jugador, "Tu Tablero de Disparos (Objetivo: CPU)", ocultar_barcos=False)
+
+        jugador_hundo_ultimo_barco = False
+        cpu_hundo_ultimo_barco = False
+
+        # Turno del Jugador
+        while True:
+            coord = input(f"{nombre_jugador}, ingresa tu disparo (ej. A1): ").strip()
+            if disparar(tablero_cpu, disparos_jugador, coord, nombre_jugador):
+                break
+
+        # Comprobar si el jugador hundió el último barco de la CPU
+        if not quedan_barcos(tablero_cpu):
+            jugador_hundo_ultimo_barco = True
+
+        # Si el jugador no ganó solo, la CPU toma su turno
+        if not jugador_hundo_ultimo_barco:
+            print("\n--- Turno de la CPU ---")
+            time.sleep(1) # Pequeña pausa para simular el "pensamiento" de la CPU
+
+            # Turno de la CPU
+            while True:
+                fila_cpu = random.randint(0, FILAS - 1)
+                col_cpu = random.randint(0, COLUMNAS - 1)
+                coord_cpu = f"{chr(ord('A') + fila_cpu)}{col_cpu + 1}"
+
+                # Intentar disparar. Si el disparo es válido, romper el bucle de la CPU
+                if disparar(tablero_jugador, disparos_cpu, coord_cpu, nombre_cpu):
+                    print(f"{nombre_cpu} dispara a {coord_cpu}...")
+                    time.sleep(1.5) # Pausa para ver el resultado del disparo de la CPU
+                    break
+
+            # Comprobar si la CPU hundió el último barco del jugador
+            if not quedan_barcos(tablero_jugador):
+                cpu_hundo_ultimo_barco = True
+        else:
+            # Si el jugador ya ganó, la CPU no necesita disparar
+            # Pero necesitamos una pausa antes de mostrar el resultado final
+            time.sleep(1)
+
+        # --- Comprobación de Victoria/Empate después de ambos disparos en la ronda ---
+        if jugador_hundo_ultimo_barco and cpu_hundo_ultimo_barco:
+            limpiar_pantalla()
+            mostrar_tablero(tablero_jugador, "Tu Tablero Final", ocultar_barcos=False)
+            mostrar_tablero(disparos_jugador, "Tus Disparos Finales", ocultar_barcos=False)
+            print("\n¡Es un EMPATE! Ambos hundieron el último barco en el mismo turno.")
+            break # Sale del bucle principal del juego
+        elif jugador_hundo_ultimo_barco:
+            limpiar_pantalla()
+            mostrar_tablero(tablero_jugador, "Tu Tablero Final", ocultar_barcos=False)
+            mostrar_tablero(disparos_jugador, "Tus Disparos Finales", ocultar_barcos=False)
+            print(f"\n¡FELICIDADES {nombre_jugador}! ¡Has hundido todos los barcos de la CPU!")
+            guardar_puntuacion(nombre_jugador)
+            break # Sale del bucle principal del juego
+        elif cpu_hundo_ultimo_barco:
+            limpiar_pantalla()
+            mostrar_tablero(tablero_jugador, "Tu Tablero Final", ocultar_barcos=False)
+            mostrar_tablero(disparos_jugador, "Tus Disparos Finales", ocultar_barcos=False)
+            print(f"\n¡Oh no! ¡La CPU ha hundido todos tus barcos! {nombre_cpu} gana.")
+            guardar_puntuacion(nombre_cpu)
+            break # Sale del bucle principal del juego
+
+        turno += 1 # Solo incrementa el turno si el juego continúa
+
+    input("\nPresiona Enter para continuar...")
+
+
+def jugar_vs_jugador():
+    """Modo de juego contra otro jugador."""
+    nombre1 = input("Nombre del Jugador 1: ")
+    nombre2 = input("Nombre del Jugador 2: ")
+
+    tablero1 = crear_tablero()
+    tablero2 = crear_tablero()
+    disparos1 = crear_tablero() # Lo que el Jugador 1 ve de los disparos a Jugador 2
+    disparos2 = crear_tablero() # Lo que el Jugador 2 ve de los disparos a Jugador 1
+
+    # Colocación de barcos para Jugador 1
+    limpiar_pantalla()
+    print(f"\n--- {nombre1}: Coloca tus barcos ---")
+    colocar_barcos(tablero1, BARCOS)
+    mostrar_tablero(tablero1, f"Tablero de {nombre1}", ocultar_barcos=False)
+    input("Barcos colocados. Presiona Enter para que el Jugador 2 configure su tablero...")
+    limpiar_pantalla()
+
+    # Colocación de barcos para Jugador 2
+    print(f"\n--- {nombre2}: Coloca tus barcos ---")
+    colocar_barcos(tablero2, BARCOS)
+    mostrar_tablero(tablero2, f"Tablero de {nombre2}", ocultar_barcos=False)
+    input("Barcos colocados. Presiona Enter para comenzar el juego...")
+    limpiar_pantalla()
+
+    turno = 1
+    while True: # Bucle principal del juego, se rompe con victoria o empate
+        jugador1_hundo_ultimo_barco = False
+        jugador2_hundo_ultimo_barco = False
+
+        # Turno del Jugador 1
+        limpiar_pantalla()
+        print(f"\n--- Turno {turno} - {nombre1} ---")
+        mostrar_tablero(disparos1, f"Tablero de Disparos de {nombre1} (Objetivo: {nombre2})", ocultar_barcos=False)
+        while True:
+            coord = input(f"{nombre1}, ingresa tu disparo (ej. A1): ").strip()
+            if disparar(tablero2, disparos1, coord, nombre1):
+                break
+
+        # Comprobar si el Jugador 1 hundió el último barco del Jugador 2
+        if not quedan_barcos(tablero2):
+            jugador1_hundo_ultimo_barco = True
+
+        # Si el Jugador 1 no ganó solo, el Jugador 2 toma su turno
+        if not jugador1_hundo_ultimo_barco:
+            input("\nPresiona Enter para que el siguiente jugador prepare su turno...")
+            limpiar_pantalla()
+
+            # Turno del Jugador 2
+            print(f"\n--- Turno {turno} - {nombre2} ---")
+            mostrar_tablero(disparos2, f"Tablero de Disparos de {nombre2} (Objetivo: {nombre1})", ocultar_barcos=False)
+            while True:
+                coord = input(f"{nombre2}, ingresa tu disparo (ej. A1): ").strip()
+                if disparar(tablero1, disparos2, coord, nombre2):
+                    break
+
+            # Comprobar si el Jugador 2 hundió el último barco del Jugador 1
+            if not quedan_barcos(tablero1):
+                jugador2_hundo_ultimo_barco = True
+        else:
+            # Si el Jugador 1 ya ganó, el Jugador 2 no necesita disparar
+            pass # No hay pausa aquí, el resultado se mostrará a continuación
+
+        # --- Comprobación de Victoria/Empate después de ambos disparos en la ronda ---
+        if jugador1_hundo_ultimo_barco and jugador2_hundo_ultimo_barco:
+            limpiar_pantalla()
+            print("\n¡Es un EMPATE! Ambos hundieron el último barco en el mismo turno.")
+            break # Sale del bucle principal del juego
+        elif jugador1_hundo_ultimo_barco:
+            limpiar_pantalla()
+            print(f"\n¡FELICIDADES {nombre1}! ¡Has hundido todos los barcos de {nombre2}!")
+            guardar_puntuacion(nombre1)
+            break # Sale del bucle principal del juego
+        elif jugador2_hundo_ultimo_barco:
+            limpiar_pantalla()
+            print(f"\n¡FELICIDADES {nombre2}! ¡Has hundido todos los barcos de {nombre1}!")
+            guardar_puntuacion(nombre2)
+            break # Sale del bucle principal del juego
+
+        turno += 1 # Solo incrementa el turno si el juego continúa
+
+    input("\nPresiona Enter para finalizar la partida...")
+
+# --- Menú Principal ---
+
+def juego():
+    """Función principal para iniciar el juego de Batalla Naval."""
+    while True:
+        limpiar_pantalla()
+        print("=== Batalla Naval ===")
+        print("1. Jugar contra la CPU")
+        print("2. Jugar contra otro jugador")
+        print("3. Salir")
+
+        opcion = input("Selecciona una opción (1, 2 o 3): ").strip()
+
+        if opcion == "1":
+            jugar_vs_cpu()
+        elif opcion == "2":
+            jugar_vs_jugador()
+        elif opcion == "3":
+            print("¡Gracias por jugar a Batalla Naval!")
+            break
+        else:
+            print("Opción inválida. Por favor, selecciona 1, 2 o 3.")
+            time.sleep(1.5)
+
+# Ejecutar el juego
+if _name_ == "_main_":
+    juego()
+    #daniel alanes caceres 
+    #game over
